@@ -54,13 +54,13 @@ cd GoogleFlightsMCP.Server
 dotnet run
 ```
 
-The server will start on `http://localhost:5000` (or `https://localhost:5001` for HTTPS).
+The server will start on `http://localhost:5200` (or `https://localhost:7236` for HTTPS).
 
 ### 4. Access Swagger UI
 
 Open your browser and navigate to:
 ```
-http://localhost:5000/swagger
+http://localhost:5200/swagger
 ```
 
 ## API Endpoints
@@ -79,7 +79,7 @@ Search for flights with query parameters:
 
 **Example:**
 ```bash
-curl "http://localhost:5000/api/flights/search?origin=JFK&destination=LAX&departureDate=2024-12-15&passengers=1&cabinClass=economy"
+curl "http://localhost:5200/api/flights/search?origin=JFK&destination=LAX&departureDate=2024-12-15&passengers=1&cabinClass=economy"
 ```
 
 ### POST /api/mcp/search
@@ -98,7 +98,7 @@ MCP-compatible endpoint for flight searches. Accepts JSON body:
 
 **Example:**
 ```bash
-curl -X POST http://localhost:5000/api/mcp/search \
+curl -X POST http://localhost:5200/api/mcp/search \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "JFK",

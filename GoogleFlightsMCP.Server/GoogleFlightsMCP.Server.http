@@ -1,6 +1,33 @@
 @GoogleFlightsMCP.Server_HostAddress = http://localhost:5200
 
-GET {{GoogleFlightsMCP.Server_HostAddress}}/weatherforecast/
+# Get server information
+GET {{GoogleFlightsMCP.Server_HostAddress}}/
 Accept: application/json
+
+###
+
+# Search for one-way flights
+GET {{GoogleFlightsMCP.Server_HostAddress}}/api/flights/search?origin=JFK&destination=LAX&departureDate=2024-12-15&passengers=1&cabinClass=economy
+Accept: application/json
+
+###
+
+# Search for round-trip flights
+GET {{GoogleFlightsMCP.Server_HostAddress}}/api/flights/search?origin=SFO&destination=NYC&departureDate=2024-12-20&returnDate=2024-12-27&passengers=2&cabinClass=business
+Accept: application/json
+
+###
+
+# MCP search endpoint
+POST {{GoogleFlightsMCP.Server_HostAddress}}/api/mcp/search
+Content-Type: application/json
+
+{
+  "origin": "LHR",
+  "destination": "TYO",
+  "departureDate": "2024-12-25",
+  "passengers": 1,
+  "cabinClass": "first"
+}
 
 ###

@@ -6,13 +6,27 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient<IFlightSearchService, FlightSearchService>();
+
+// CORS configuration - Note: In production, restrict to specific origins for security
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: Allow all origins for testing
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // Production: Restrict to specific origins
+            // TODO: Update with your production domains
+            policy.WithOrigins("https://yourdomain.com")
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
     });
 });
 

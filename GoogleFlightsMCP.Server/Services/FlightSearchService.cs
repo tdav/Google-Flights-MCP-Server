@@ -119,7 +119,7 @@ public class FlightSearchService : IFlightSearchService
 
             flights.Add(new Flight(
                 Airline: airline,
-                FlightNumber: $"{airline.Substring(0, 2).ToUpper()}{random.Next(1000, 9999)}",
+                FlightNumber: $"{airline.Substring(0, Math.Min(airline.Length, 2)).ToUpper()}{random.Next(1000, 9999)}",
                 DepartureTime: $"{departureHour:D2}:{random.Next(0, 60):D2}",
                 ArrivalTime: $"{arrivalHour:D2}:{random.Next(0, 60):D2}",
                 Duration: $"{duration}h {random.Next(0, 60)}m",
