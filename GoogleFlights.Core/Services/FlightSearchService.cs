@@ -1,9 +1,8 @@
-using Serilog;
+﻿using Serilog;
 using GoogleFlights.Core.Models;
 using GoogleFlights.Core.Helpers;
 using Microsoft.Playwright;
 using AngleSharp.Html.Parser;
-using AngleSharp.Dom;
 
 namespace GoogleFlights.Core.Services;
 
@@ -15,72 +14,6 @@ public class FlightSearchService : IFlightSearchService, IDisposable
     private IPlaywright? _playwright;
     private IBrowser? _browser;
     private readonly SemaphoreSlim _lock = new(1, 1);
-
-    private static readonly Dictionary<string, string> AirportCodes = new()
-    {
-        // North America
-        { "JFK", "/m/02_286" },
-        { "LAX", "/m/030qb3t" },
-        { "ORD", "/m/01_d4" },
-        { "DFW", "/m/030k2v" },
-        { "SFO", "/m/0d6lp" },
-        { "SEA", "/m/0d9jr" },
-        { "MIA", "/m/0f2v0" },
-        { "BOS", "/m/01cx_" },
-        { "ATL", "/m/013yq" },
-        { "LAS", "/m/0cv3w" },
-        { "PHX", "/m/0d35y" },
-        { "DEN", "/m/02cft" },
-        { "IAH", "/m/03ksg" },
-        { "MSP", "/m/0fpzwf" },
-        { "DTW", "/m/0fvwg" },
-        { "EWR", "/m/0cc56" },
-        { "MCO", "/m/0fxmq" },
-        
-        // Europe
-        { "LHR", "/m/04jpl" },
-        { "CDG", "/m/05qtj" },
-        { "FRA", "/m/0jxgx" },
-        { "AMS", "/m/0k3p" },
-        { "MAD", "/m/056_y" },
-        { "BCN", "/m/01f62" },
-        { "FCO", "/m/06c62" },
-        { "MUC", "/m/0727_" },
-        { "IST", "/m/09949" },
-        { "LGW", "/m/065y4w7" },
-        { "ZRH", "/m/08g5vq" },
-        { "VIE", "/m/05qx6" },
-        
-        // Asia
-        { "DXB", "/m/01f08r" },
-        { "HKG", "/m/03h64r" },
-        { "NRT", "/m/0f4t4" },
-        { "SIN", "/m/02p24c" },
-        { "ICN", "/m/0cyzn" },
-        { "BKK", "/m/0dl9t8" },
-        { "DEL", "/m/03l8mx" },
-        { "PEK", "/m/0dq_7" },
-        { "PVG", "/m/0j5nb" },
-        { "HND", "/m/0gx_x" },
-        
-        // Middle East & Central Asia
-        { "TAS", "/m/0fsmy" },  // Tashkent
-        { "DOH", "/m/01_8q3" },
-        
-        // Australia & Oceania
-        { "SYD", "/m/06y57" },
-        { "MEL", "/m/0chghy" },
-        { "AKL", "/m/0ctyv" },
-        
-        // South America
-        { "GRU", "/m/0fphj" },
-        { "EZE", "/m/0132jd" },
-        { "GIG", "/m/02k0l1" },
-        
-        // Africa
-        { "JNB", "/m/04g8v" },
-        { "CAI", "/m/0cwd8" },
-    };
 
     public async Task<FlightResult> SearchFlightsAsync(FlightData flightData)
     {
@@ -118,7 +51,10 @@ public class FlightSearchService : IFlightSearchService, IDisposable
         // Use a new context for each request to avoid shared state/cookies issues
         var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
         {
-            UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Locale = "en-US",
+            TimezoneId = "America/New_York",
+            ViewportSize = new ViewportSize { Width = 1920, Height = 1080 }
         });
 
         var page = await context.NewPageAsync();
@@ -126,16 +62,30 @@ public class FlightSearchService : IFlightSearchService, IDisposable
 
         try 
         {
-            await page.GotoAsync(url);
+            await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
             
+            // Handle Google cookie consent dialog
+            await AcceptCookieConsentAsync(page);
+
             // Wait for results. We accept either "Best departing flights" or "Other departing flights" containers
             try 
             {
-                await page.WaitForSelectorAsync("div[jsname='IWWDBc'], div[jsname='YdtKid']", new PageWaitForSelectorOptions { Timeout = 30000 });
+                await Task.Delay(1000);
+                await page.WaitForSelectorAsync("div[jsname='IWWDBc'], div[jsname='YdtKid']", new PageWaitForSelectorOptions { Timeout = 45000 });
+                await Task.Delay(2000);
             }
             catch (TimeoutException)
             {
-                Log.Warning("Timeout waiting for flight results. URL: {Url}", url);
+                // Try to check if there's an error message or no flights available
+                var noFlightsMessage = await page.QuerySelectorAsync("div[class*='error'], div[class*='no-results']");
+                if (noFlightsMessage != null)
+                {
+                    Log.Warning("No flights found or error on page. URL: {Url}", url);
+                }
+                else
+                {
+                    Log.Warning("Timeout waiting for flight results. URL: {Url}", url);
+                }
                 return flights;
             }
 
@@ -221,6 +171,52 @@ public class FlightSearchService : IFlightSearchService, IDisposable
         return flights;
     }
 
+    /// <summary>
+    /// Handles Google cookie consent dialog if present
+    /// </summary>
+    private async Task AcceptCookieConsentAsync(IPage page)
+    {
+        try
+        {
+            // Common selectors for Google consent dialogs
+            var consentSelectors = new[]
+            {
+                "button[aria-label='Accept all']",
+                "button:has-text('Accept all')",
+                "button:has-text('I agree')",
+                "button:has-text('Agree')",
+                "[aria-label='Accept all']",
+                "form[action*='consent'] button",
+                "#L2AGLb", // Google consent button ID
+                "button[jsname='b3VHJd']" // Another common Google consent button
+            };
+
+            foreach (var selector in consentSelectors)
+            {
+                try
+                {
+                    var consentButton = await page.QuerySelectorAsync(selector);
+                    if (consentButton != null)
+                    {
+                        await consentButton.ClickAsync();
+                        Log.Information("Accepted cookie consent using selector: {Selector}", selector);
+                        // Wait for page to update after consent
+                        await page.WaitForTimeoutAsync(2000);
+                        break;
+                    }
+                }
+                catch
+                {
+                    // Continue to next selector
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not handle cookie consent dialog");
+        }
+    }
+
     private async Task InitializePlaywrightAsync()
     {
         if (_browser != null) return;
@@ -231,8 +227,10 @@ public class FlightSearchService : IFlightSearchService, IDisposable
             if (_browser != null) return;
 
             _playwright = await Playwright.CreateAsync();
+
             _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
+                ChromiumSandbox = true,
                 Headless = true
             });
         }
@@ -250,148 +248,181 @@ public class FlightSearchService : IFlightSearchService, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public string BuildGoogleFlightsUrl(FlightData flightData)
-    {
-        // Get Google codes for airports
-        var originCode = GetGoogleCode(flightData.Origin);
-        var destCode = GetGoogleCode(flightData.Destination);
+        public string BuildGoogleFlightsUrl(FlightData flightData)
 
-        // Base URL
-        var baseUrl = "https://www.google.ca/travel/flights";
-        
-        // Build TFS parameter based on trip type
-        string tfsParam;
-        if (flightData.TripType == TripType.RoundTrip && !string.IsNullOrEmpty(flightData.ReturnDate))
         {
-            tfsParam = BuildRoundTripTfsParameter(
-                flightData.DepartureDate,
-                flightData.ReturnDate!,
-                originCode,
-                destCode);
-        }
-        else
-        {
-            tfsParam = BuildOneWayTfsParameter(
-                flightData.DepartureDate,
-                originCode,
-                destCode);
-        }
 
-        // Build URL with parameters
-        var url = $"{baseUrl}/search?tfs={tfsParam}&hl=en&curr=USD";
-        
-        // Add passenger count if more than 1
-        if (flightData.Passengers.Total > 1)
-        {
-            url += $"&adults={flightData.Passengers.Adults}";
-            if (flightData.Passengers.Children > 0)
-                url += $"&children={flightData.Passengers.Children}";
-            if (flightData.Passengers.Infants > 0)
-                url += $"&infants={flightData.Passengers.Infants}";
-        }
-        
-        // Add cabin class if not economy
-        var cabinClassCode = (int)flightData.SeatType;
-        if (cabinClassCode > 0)
-            url += $"&c={cabinClassCode}";
+            var baseUrl = "https://www.google.com/travel/flights";
 
-        return url;
-    }
+            
 
-    public bool ValidateFlightData(FlightData flightData)
-    {
-        if (string.IsNullOrWhiteSpace(flightData.Origin))
-            throw new ArgumentException("Origin airport is required");
+            var queryParts = new List<string>
+            {
+                $"from {flightData.Origin}",
+                $"to {flightData.Destination}",
+                $"on {flightData.DepartureDate}"
+            };
 
-        if (string.IsNullOrWhiteSpace(flightData.Destination))
-            throw new ArgumentException("Destination airport is required");
+    
 
-        if (flightData.Origin.Equals(flightData.Destination, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Origin and destination must be different");
+            if (flightData.TripType == TripType.RoundTrip && !string.IsNullOrEmpty(flightData.ReturnDate))
+            {
+                queryParts.Add($"returning {flightData.ReturnDate}");
+            }
 
-        if (string.IsNullOrWhiteSpace(flightData.DepartureDate))
-            throw new ArgumentException("Departure date is required");
+            
 
-        if (!DateHelper.IsValidDate(flightData.DepartureDate))
-            throw new ArgumentException("Departure date must be in YYYY-MM-DD format");
+            // Cabin class
+            var cabinClass = GetCabinClassName(flightData.SeatType).Replace("_", " ");
+            if (flightData.SeatType != SeatType.Economy)
+            {
+                queryParts.Add($"{cabinClass} class");
+            }
+                       
 
-        if (!DateHelper.IsInFuture(flightData.DepartureDate))
-            throw new ArgumentException("Departure date must be in the future or today");
+            // Passengers
+            if (flightData.Passengers.Total > 1)
+            {
+                queryParts.Add($"{flightData.Passengers.Total} passengers");
+            }
+    
 
-        if (flightData.TripType == TripType.RoundTrip)
-        {
-            if (string.IsNullOrWhiteSpace(flightData.ReturnDate))
-                throw new ArgumentException("Return date is required for round trip");
+            var queryString = string.Join(" ", queryParts);
 
-            if (!DateHelper.IsValidDate(flightData.ReturnDate))
-                throw new ArgumentException("Return date must be in YYYY-MM-DD format");
+            // Use Uri.EscapeDataString for cleaner encoding of spaces and special chars
 
-            if (!DateHelper.IsReturnDateValid(flightData.DepartureDate, flightData.ReturnDate))
-                throw new ArgumentException("Return date must be after or equal to departure date");
+            var encodedQuery = Uri.EscapeDataString(queryString);
+
+            
+
+            return $"{baseUrl}?q={encodedQuery}&curr=USD&hl=en";
+
         }
 
-        if (!flightData.Passengers.IsValid())
-            throw new ArgumentException("Invalid passenger count");
+    
 
-        return true;
-    }
+        public bool ValidateFlightData(FlightData flightData)
 
-    private string GetGoogleCode(string airportCode)
-    {
-        var code = airportCode.ToUpper();
-        if (AirportCodes.TryGetValue(code, out var googleCode))
         {
-            return googleCode;
+
+            if (string.IsNullOrWhiteSpace(flightData.Origin))
+
+                throw new ArgumentException("Origin airport is required");
+
+    
+
+            if (string.IsNullOrWhiteSpace(flightData.Destination))
+
+                throw new ArgumentException("Destination airport is required");
+
+    
+
+            if (flightData.Origin.Equals(flightData.Destination, StringComparison.OrdinalIgnoreCase))
+
+                throw new ArgumentException("Origin and destination must be different");
+
+    
+
+            if (string.IsNullOrWhiteSpace(flightData.DepartureDate))
+
+                throw new ArgumentException("Departure date is required");
+
+    
+
+            if (!DateHelper.IsValidDate(flightData.DepartureDate))
+
+                throw new ArgumentException("Departure date must be in YYYY-MM-DD format");
+
+    
+
+            if (!DateHelper.IsInFuture(flightData.DepartureDate))
+
+                throw new ArgumentException("Departure date must be in the future or today");
+
+    
+
+            if (flightData.TripType == TripType.RoundTrip)
+
+            {
+
+                if (string.IsNullOrWhiteSpace(flightData.ReturnDate))
+
+                    throw new ArgumentException("Return date is required for round trip");
+
+    
+
+                if (!DateHelper.IsValidDate(flightData.ReturnDate))
+
+                    throw new ArgumentException("Return date must be in YYYY-MM-DD format");
+
+    
+
+                if (!DateHelper.IsReturnDateValid(flightData.DepartureDate, flightData.ReturnDate))
+
+                    throw new ArgumentException("Return date must be after or equal to departure date");
+
+            }
+
+    
+
+            if (!flightData.Passengers.IsValid())
+
+                throw new ArgumentException("Invalid passenger count");
+
+    
+
+            return true;
+
         }
-        
-        // Log warning for unsupported airport code
-        Log.Warning("Airport code {Code} not found in database, using fallback format", code);
-        
-        // Fallback format - may not always work but provides basic functionality
-        return $"/m/{code.ToLower()}";
-    }
 
-    private decimal GetCabinPriceMultiplier(SeatType seatType)
-    {
-        return seatType switch
+    
+
+        private decimal GetCabinPriceMultiplier(SeatType seatType)
+
         {
-            SeatType.Economy => 1.0m,
-            SeatType.PremiumEconomy => 1.5m,
-            SeatType.Business => 3.0m,
-            SeatType.First => 5.0m,
-            _ => 1.0m
-        };
-    }
 
-    private string GetCabinClassName(SeatType seatType)
-    {
-        return seatType switch
+            return seatType switch
+
+            {
+
+                SeatType.Economy => 1.0m,
+
+                SeatType.PremiumEconomy => 1.5m,
+
+                SeatType.Business => 3.0m,
+
+                SeatType.First => 5.0m,
+
+                _ => 1.0m
+
+            };
+
+        }
+
+    
+
+        private string GetCabinClassName(SeatType seatType)
+
         {
-            SeatType.Economy => "economy",
-            SeatType.PremiumEconomy => "premium_economy",
-            SeatType.Business => "business",
-            SeatType.First => "first",
-            _ => "economy"
-        };
+
+            return seatType switch
+
+            {
+
+                SeatType.Economy => "economy",
+
+                SeatType.PremiumEconomy => "premium_economy",
+
+                SeatType.Business => "business",
+
+                SeatType.First => "first",
+
+                _ => "economy"
+
+            };
+
+        }
+
     }
 
-   
-    private string BuildRoundTripTfsParameter(
-        string departureDate,
-        string returnDate,
-        string originCode,
-        string destCode)
-    {
-        // Format: flight=from:origin,to:dest,departure:YYYY-MM-DD;flight=from:dest,to:origin,departure:YYYY-MM-DD
-        return $"flight=from:{originCode},to:{destCode},departure:{departureDate};flight=from:{destCode},to:{originCode},departure:{returnDate}";
-    }
-
-    private string BuildOneWayTfsParameter(
-        string departureDate,
-        string originCode,
-        string destCode)
-    {
-        // Format: flight=from:origin,to:dest,departure:YYYY-MM-DD
-        return $"flight=from:{originCode},to:{destCode},departure:{departureDate}";
-    }
-}
+    

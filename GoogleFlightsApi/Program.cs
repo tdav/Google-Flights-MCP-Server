@@ -6,7 +6,7 @@ using GoogleFlightsApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-internal class Program
+public partial class Program
 {
     private static void Main(string[] args)
     {

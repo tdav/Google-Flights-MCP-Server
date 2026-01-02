@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GoogleFlightsApi.Data;
 using GoogleFlightsApi.Data.Entities;
 using GoogleFlightsApi.Models;
@@ -23,43 +24,27 @@ public class SearchHistoryService : ISearchHistoryService
         FlightSearchRequest request,
         FlightSearchResponse response)
     {
+        // Serialize flights to JSON
+        var flightsJson = JsonSerializer.Serialize(response.Flights);
+
         var searchHistory = new SearchHistory
         {
             ClientInfoId = clientInfoId,
             Origin = request.Origin,
             Destination = request.Destination,
-            DepartureDate = DateTime.Parse(request.DepartureDate),
+            DepartureDate = DateTime.Parse(request.DepartureDate).ToUniversalTime(),
             ReturnDate = string.IsNullOrWhiteSpace(request.ReturnDate) 
                 ? null 
-                : DateTime.Parse(request.ReturnDate),
+                : DateTime.Parse(request.ReturnDate).ToUniversalTime(),
             Passengers = request.Passengers,
             CabinClass = request.CabinClass,
             SearchedAt = DateTime.UtcNow,
-            SearchUrl = response.SearchUrl
+            SearchUrl = response.SearchUrl,
+            FlightsJson = flightsJson
         };
 
         _context.SearchHistories.Add(searchHistory);
-        await _context.SaveChangesAsync();
-
-        // Save flight results
-        foreach (var flight in response.Flights)
-        {
-            var flightResult = new FlightResult
-            {
-                SearchHistoryId = searchHistory.Id,
-                Airline = flight.Airline,
-                FlightNumber = flight.FlightNumber,
-                DepartureTime = flight.DepartureTime,
-                ArrivalTime = flight.ArrivalTime,
-                Duration = flight.Duration,
-                Stops = flight.Stops,
-                Price = flight.Price,
-                Currency = flight.Currency
-            };
-
-            _context.FlightResults.Add(flightResult);
-        }
-
+        
         // Update client search count
         var client = await _context.ClientInfos.FindAsync(clientInfoId);
         if (client != null)
@@ -71,8 +56,8 @@ public class SearchHistoryService : ISearchHistoryService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Search saved for client {ClientId}: {Origin} -> {Destination}",
-            clientInfoId, request.Origin, request.Destination);
+            "Search saved for client {ClientId}: {Origin} -> {Destination} with {FlightCount} results",
+            clientInfoId, request.Origin, request.Destination, response.Flights.Count);
     }
 
     public async Task<List<SearchHistoryDto>> GetSearchHistoryAsync(
@@ -100,7 +85,10 @@ public class SearchHistoryService : ISearchHistoryService
             CabinClass = s.CabinClass,
             SearchedAt = s.SearchedAt,
             SearchUrl = s.SearchUrl,
-            IpAddress = s.ClientInfo.IpAddress
+            IpAddress = s.ClientInfo.IpAddress,
+            Flights = string.IsNullOrEmpty(s.FlightsJson) 
+                ? new List<FlightDto>() 
+                : JsonSerializer.Deserialize<List<FlightDto>>(s.FlightsJson) ?? new List<FlightDto>()
         }).ToList();
     }
 
@@ -127,7 +115,10 @@ public class SearchHistoryService : ISearchHistoryService
             CabinClass = s.CabinClass,
             SearchedAt = s.SearchedAt,
             SearchUrl = s.SearchUrl,
-            IpAddress = s.ClientInfo.IpAddress
+            IpAddress = s.ClientInfo.IpAddress,
+            Flights = string.IsNullOrEmpty(s.FlightsJson) 
+                ? new List<FlightDto>() 
+                : JsonSerializer.Deserialize<List<FlightDto>>(s.FlightsJson) ?? new List<FlightDto>()
         }).ToList();
     }
 }

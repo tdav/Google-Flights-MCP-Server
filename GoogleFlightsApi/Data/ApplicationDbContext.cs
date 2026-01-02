@@ -9,7 +9,6 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<ClientInfo> ClientInfos { get; set; }
     public DbSet<SearchHistory> SearchHistories { get; set; }
-    public DbSet<FlightResult> FlightResults { get; set; }
     public DbSet<RequestLog> RequestLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -31,6 +30,12 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Destination).IsRequired().HasMaxLength(10);
             entity.Property(e => e.CabinClass).IsRequired().HasMaxLength(50);
             entity.Property(e => e.SearchUrl).HasMaxLength(2000);
+            
+            // Map to JSONB in PostgreSQL
+            entity.Property(e => e.FlightsJson)
+                .HasColumnType("jsonb")
+                .IsRequired()
+                .HasDefaultValue("[]");
 
             entity.HasOne(e => e.ClientInfo)
                 .WithMany(c => c.Searches)
@@ -39,23 +44,6 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.SearchedAt);
             entity.HasIndex(e => new { e.Origin, e.Destination });
-        });
-
-        modelBuilder.Entity<FlightResult>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Airline).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.FlightNumber).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.DepartureTime).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.ArrivalTime).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.Duration).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.Currency).IsRequired().HasMaxLength(10);
-
-            entity.HasOne(e => e.SearchHistory)
-                .WithMany(s => s.FlightResults)
-                .HasForeignKey(e => e.SearchHistoryId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<RequestLog>(entity =>

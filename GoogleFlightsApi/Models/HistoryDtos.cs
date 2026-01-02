@@ -12,6 +12,7 @@ public class SearchHistoryDto
     public DateTime SearchedAt { get; set; }
     public string SearchUrl { get; set; } = string.Empty;
     public string IpAddress { get; set; } = string.Empty;
+    public List<FlightDto> Flights { get; set; } = new();
 }
 
 public class ClientInfoDto

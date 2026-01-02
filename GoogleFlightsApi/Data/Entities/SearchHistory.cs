@@ -12,7 +12,11 @@ public class SearchHistory
     public string CabinClass { get; set; } = string.Empty;
     public DateTime SearchedAt { get; set; }
     public string SearchUrl { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// All flight results stored as a JSONB array
+    /// </summary>
+    public string FlightsJson { get; set; } = "[]";
 
     public ClientInfo ClientInfo { get; set; } = null!;
-    public ICollection<FlightResult> FlightResults { get; set; } = new List<FlightResult>();
 }
