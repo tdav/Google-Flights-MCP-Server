@@ -1,0 +1,6 @@
+@GoogleFlightsApi_HostAddress = http://localhost:5054
+
+GET {{GoogleFlightsApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
