@@ -1,14 +1,21 @@
 using Serilog;
 using GoogleFlights.Core.Models;
 using GoogleFlights.Core.Helpers;
+using Microsoft.Playwright;
+using AngleSharp.Html.Parser;
+using AngleSharp.Dom;
 
 namespace GoogleFlights.Core.Services;
 
 /// <summary>
 /// Service for searching flights on Google Flights
 /// </summary>
-public class FlightSearchService : IFlightSearchService
+public class FlightSearchService : IFlightSearchService, IDisposable
 {
+    private IPlaywright? _playwright;
+    private IBrowser? _browser;
+    private readonly SemaphoreSlim _lock = new(1, 1);
+
     private static readonly Dictionary<string, string> AirportCodes = new()
     {
         // North America
@@ -87,8 +94,8 @@ public class FlightSearchService : IFlightSearchService
             flightData.Destination, 
             flightData.DepartureDate);
 
-        // Return flight search result with empty flights list
-        // In production, this would integrate with a real flight search API
+        var flights = await FetchFlightsAsync(searchUrl, flightData);
+
         return new FlightResult
         {
             Origin = flightData.Origin,
@@ -97,11 +104,150 @@ public class FlightSearchService : IFlightSearchService
             ReturnDate = flightData.ReturnDate,
             Passengers = flightData.Passengers.Total,
             CabinClass = GetCabinClassName(flightData.SeatType),
-            Flights = new List<Flight>(), // Empty list - to be populated by actual provider
+            Flights = flights,
             SearchUrl = searchUrl,
             TripType = flightData.TripType,
             SearchedAt = DateTime.UtcNow
         };
+    }
+
+    private async Task<List<Flight>> FetchFlightsAsync(string url, FlightData flightData)
+    {
+        await InitializePlaywrightAsync();
+
+        // Use a new context for each request to avoid shared state/cookies issues
+        var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        });
+
+        var page = await context.NewPageAsync();
+        var flights = new List<Flight>();
+
+        try 
+        {
+            await page.GotoAsync(url);
+            
+            // Wait for results. We accept either "Best departing flights" or "Other departing flights" containers
+            try 
+            {
+                await page.WaitForSelectorAsync("div[jsname='IWWDBc'], div[jsname='YdtKid']", new PageWaitForSelectorOptions { Timeout = 30000 });
+            }
+            catch (TimeoutException)
+            {
+                Log.Warning("Timeout waiting for flight results. URL: {Url}", url);
+                return flights;
+            }
+
+            var content = await page.ContentAsync();
+            var parser = new HtmlParser();
+            var document = await parser.ParseDocumentAsync(content);
+
+            var flightElements = document.QuerySelectorAll("div[jsname='IWWDBc'], div[jsname='YdtKid']");
+            
+            foreach (var flightGroup in flightElements)
+            {
+                // Select list items within the group, filtering out hidden or irrelevant ones if necessary
+                var listItems = flightGroup.QuerySelectorAll("ul.Rk10dc li");
+                foreach (var item in listItems)
+                {
+                    try 
+                    {
+                        // Check if it's a valid flight card (basic check for name)
+                        var nameElement = item.QuerySelector("div.sSHqwe.tPgKwe.ogfYpf span");
+                        if (nameElement == null) continue;
+
+                        var name = nameElement.TextContent.Trim();
+                        
+                        var times = item.QuerySelectorAll("span.mv1WYe div");
+                        var departureTime = times.Length > 0 ? times[0].TextContent.Trim() : "";
+                        var arrivalTime = times.Length > 1 ? times[1].TextContent.Trim() : "";
+                        
+                        var duration = item.QuerySelector("li div.Ak5kof div")?.TextContent.Trim() ?? "";
+                        var stops = item.QuerySelector(".BbR8Ec .ogfYpf")?.TextContent.Trim() ?? "0";
+                        var priceText = item.QuerySelector(".YMlIz.FpEdX")?.TextContent.Trim() ?? "0";
+
+                        // Parse price
+                        decimal price = 0;
+                        if (!string.IsNullOrEmpty(priceText))
+                        {
+                            var cleanPrice = new string(priceText.Where(c => char.IsDigit(c) || c == '.').ToArray());
+                            decimal.TryParse(cleanPrice, out price);
+                        }
+
+                        // Parse stops
+                        int stopsCount = 0;
+                        if (stops.Contains("Nonstop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            stopsCount = 0;
+                        }
+                        else
+                        {
+                             var stopsPart = stops.Split(' ')[0];
+                             int.TryParse(stopsPart, out stopsCount);
+                        }
+
+                        flights.Add(new Flight
+                        {
+                            Airline = name,
+                            FlightNumber = "N/A", // Not scraped currently
+                            DepartureTime = departureTime,
+                            ArrivalTime = arrivalTime,
+                            Duration = duration,
+                            Stops = stopsCount,
+                            Price = price,
+                            Currency = "USD", // Assumed from URL param curr=USD
+                            Origin = flightData.Origin,
+                            Destination = flightData.Destination,
+                            DepartureDate = flightData.DepartureDate
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "Error parsing flight item");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error during Playwright execution");
+        }
+        finally
+        {
+            await context.CloseAsync();
+        }
+
+        return flights;
+    }
+
+    private async Task InitializePlaywrightAsync()
+    {
+        if (_browser != null) return;
+
+        await _lock.WaitAsync();
+        try
+        {
+            if (_browser != null) return;
+
+            _playwright = await Playwright.CreateAsync();
+            _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            {
+                Headless = true
+            });
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        _browser?.DisposeAsync().AsTask().Wait();
+        _playwright?.Dispose();
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     public string BuildGoogleFlightsUrl(FlightData flightData)

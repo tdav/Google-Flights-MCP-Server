@@ -1,3 +1,5 @@
+using GoogleFlights.Core.Models;
+using GoogleFlights.Core.Services;
 using GoogleFlightsApi.Models;
 using GoogleFlightsApi.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -33,13 +35,21 @@ public class FlightsController : ControllerBase
     {
         try
         {
+            ValidateRequest(request);
+
             // Track client
             var ipAddress = GetClientIpAddress();
             var userAgent = Request.Headers["User-Agent"].ToString();
             var client = await _clientTrackingService.TrackClientAsync(ipAddress, userAgent);
 
-            // Perform search
-            var response = await _flightSearchService.SearchFlightsAsync(request);
+            // Convert API request to Core FlightData
+            var flightData = ConvertToFlightData(request);
+
+            // Perform search using Core service
+            var flightResult = await _flightSearchService.SearchFlightsAsync(flightData);
+
+            // Convert Core FlightResult to API response
+            var response = ConvertToFlightSearchResponse(flightResult);
 
             // Save search history
             await _searchHistoryService.SaveSearchAsync(client.Id, request, response);
@@ -98,5 +108,96 @@ public class FlightsController : ControllerBase
             return realIp;
 
         return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+
+    private void ValidateRequest(FlightSearchRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Origin))
+            throw new ArgumentException("Origin is required", nameof(request.Origin));
+
+        if (string.IsNullOrWhiteSpace(request.Destination))
+            throw new ArgumentException("Destination is required", nameof(request.Destination));
+
+        if (!DateTime.TryParse(request.DepartureDate, out var departureDate))
+            throw new ArgumentException("Invalid departure date format", nameof(request.DepartureDate));
+
+        if (departureDate < DateTime.Today)
+            throw new ArgumentException("Departure date cannot be in the past", nameof(request.DepartureDate));
+
+        if (!string.IsNullOrWhiteSpace(request.ReturnDate))
+        {
+            if (!DateTime.TryParse(request.ReturnDate, out var returnDate))
+                throw new ArgumentException("Invalid return date format", nameof(request.ReturnDate));
+
+            if (returnDate < departureDate)
+                throw new ArgumentException("Return date must be after departure date", nameof(request.ReturnDate));
+        }
+
+        var validCabinClasses = new[] { "economy", "premium_economy", "business", "first" };
+        if (!validCabinClasses.Contains(request.CabinClass.ToLower()))
+            throw new ArgumentException(
+                $"Cabin class must be one of: {string.Join(", ", validCabinClasses)}",
+                nameof(request.CabinClass));
+    }
+
+    private FlightData ConvertToFlightData(FlightSearchRequest request)
+    {
+        var seatType = ParseSeatType(request.CabinClass);
+        var tripType = !string.IsNullOrWhiteSpace(request.ReturnDate) 
+            ? TripType.RoundTrip 
+            : TripType.OneWay;
+
+        return new FlightData
+        {
+            Origin = request.Origin,
+            Destination = request.Destination,
+            DepartureDate = request.DepartureDate,
+            ReturnDate = request.ReturnDate,
+            Passengers = new Passengers { Adults = request.Passengers },
+            SeatType = seatType,
+            TripType = tripType
+        };
+    }
+
+    private SeatType ParseSeatType(string cabinClass)
+    {
+        return cabinClass.ToLower() switch
+        {
+            "economy" => SeatType.Economy,
+            "premium_economy" => SeatType.PremiumEconomy,
+            "business" => SeatType.Business,
+            "first" => SeatType.First,
+            _ => SeatType.Economy
+        };
+    }
+
+    private FlightSearchResponse ConvertToFlightSearchResponse(FlightResult flightResult)
+    {
+        return new FlightSearchResponse
+        {
+            Origin = flightResult.Origin,
+            Destination = flightResult.Destination,
+            DepartureDate = flightResult.DepartureDate,
+            ReturnDate = flightResult.ReturnDate,
+            Passengers = flightResult.Passengers,
+            CabinClass = flightResult.CabinClass,
+            SearchUrl = flightResult.SearchUrl,
+            Flights = flightResult.Flights.Select(ConvertToFlightDto).ToList()
+        };
+    }
+
+    private FlightDto ConvertToFlightDto(Flight flight)
+    {
+        return new FlightDto
+        {
+            Airline = flight.Airline,
+            FlightNumber = flight.FlightNumber,
+            DepartureTime = flight.DepartureTime,
+            ArrivalTime = flight.ArrivalTime,
+            Duration = flight.Duration,
+            Stops = flight.Stops,
+            Price = flight.Price,
+            Currency = flight.Currency
+        };
     }
 }

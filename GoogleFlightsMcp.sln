@@ -8,6 +8,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{42FDA8D9-FDFF-46C1-AB00-9BB2AFBAEE34}"
 	ProjectSection(SolutionItems) = preProject
 		.github\copilot-instructions.md = .github\copilot-instructions.md
+		GEMINI.md = GEMINI.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GoogleFlightsApi", "GoogleFlightsApi\GoogleFlightsApi.csproj", "{BB72F690-A58B-3184-07DF-CDE3DAFDC453}"

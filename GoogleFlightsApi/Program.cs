@@ -1,6 +1,7 @@
 using GoogleFlightsApi.Data;
 using GoogleFlightsApi.Logging;
 using GoogleFlightsApi.Middleware;
+using GoogleFlights.Core.Services;
 using GoogleFlightsApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
