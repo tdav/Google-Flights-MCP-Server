@@ -248,4 +248,23 @@ public class FlightSearchService : IFlightSearchService
             _ => "XX"
         };
     }
+
+    private string BuildRoundTripTfsParameter(
+        string departureDate,
+        string returnDate,
+        string originCode,
+        string destCode)
+    {
+        // Format: flight=from:origin,to:dest,departure:YYYY-MM-DD;flight=from:dest,to:origin,departure:YYYY-MM-DD
+        return $"flight=from:{originCode},to:{destCode},departure:{departureDate};flight=from:{destCode},to:{originCode},departure:{returnDate}";
+    }
+
+    private string BuildOneWayTfsParameter(
+        string departureDate,
+        string originCode,
+        string destCode)
+    {
+        // Format: flight=from:origin,to:dest,departure:YYYY-MM-DD
+        return $"flight=from:{originCode},to:{destCode},departure:{departureDate}";
+    }
 }
