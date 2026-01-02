@@ -1,4 +1,5 @@
 ﻿using Serilog;
+using Serilog.Events;
 using GoogleFlightsMcp.Mcp;
 
 namespace GoogleFlightsMcp;
@@ -8,9 +9,12 @@ class Program
     static async Task Main(string[] args)
     {
         // Configure Serilog to write to stderr to avoid interfering with MCP protocol on stdout
+        // MCP protocol uses stdout for JSON-RPC communication, so all logs must go to stderr
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
-            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(
+                restrictedToMinimumLevel: LogEventLevel.Information,
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
         try
