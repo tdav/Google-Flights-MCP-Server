@@ -5,10 +5,7 @@ namespace GoogleFlightsApi.Data;
 
 public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-        : base(options)
-    {
-    }
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<ClientInfo> ClientInfos { get; set; }
     public DbSet<SearchHistory> SearchHistories { get; set; }
@@ -34,7 +31,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Destination).IsRequired().HasMaxLength(10);
             entity.Property(e => e.CabinClass).IsRequired().HasMaxLength(50);
             entity.Property(e => e.SearchUrl).HasMaxLength(2000);
-            
+
             entity.HasOne(e => e.ClientInfo)
                 .WithMany(c => c.Searches)
                 .HasForeignKey(e => e.ClientInfoId)
