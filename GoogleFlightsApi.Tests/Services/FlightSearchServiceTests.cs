@@ -15,8 +15,7 @@ public class FlightSearchServiceTests
     public FlightSearchServiceTests()
     {
         _loggerMock = new Mock<ILogger<FlightSearchService>>();
-        var httpClient = new HttpClient();
-        _service = new FlightSearchService(_loggerMock.Object, httpClient);
+        _service = new FlightSearchService(_loggerMock.Object);
     }
 
     [Fact]

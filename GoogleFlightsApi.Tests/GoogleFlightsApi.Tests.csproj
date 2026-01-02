@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\GoogleFlightsApi\GoogleFlightsApi.csproj" />
+    <ProjectReference Include="..\GoogleFlightsApi\GoogleFlightsApi.csproj" />
   </ItemGroup>
 
 </Project>

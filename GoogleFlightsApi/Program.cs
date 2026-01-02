@@ -48,7 +48,7 @@ internal class Program
         builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
 
 
-        builder.Services.AddHttpClient<IFlightSearchService, FlightSearchService>();
+        builder.Services.AddScoped<IFlightSearchService, FlightSearchService>();
         builder.Services.AddScoped<IClientTrackingService, ClientTrackingService>();
         builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 
