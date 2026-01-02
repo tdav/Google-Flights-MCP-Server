@@ -1,4 +1,4 @@
-namespace GoogleFlightsMcp.Models;
+namespace GoogleFlights.Core.Models;
 
 /// <summary>
 /// Represents passenger information for a flight search

@@ -1,8 +1,8 @@
-using GoogleFlightsMcp.Models;
-using GoogleFlightsMcp.Helpers;
 using Serilog;
+using GoogleFlights.Core.Models;
+using GoogleFlights.Core.Helpers;
 
-namespace GoogleFlightsMcp.Services;
+namespace GoogleFlights.Core.Services;
 
 /// <summary>
 /// Service for searching flights on Google Flights
@@ -79,7 +79,6 @@ public class FlightSearchService : IFlightSearchService
     {
         ValidateFlightData(flightData);
 
-        // Build search URL
         var searchUrl = BuildGoogleFlightsUrl(flightData);
         
         Log.Information(
@@ -88,9 +87,8 @@ public class FlightSearchService : IFlightSearchService
             flightData.Destination, 
             flightData.DepartureDate);
 
-        // Simulate flight search (in production, this would scrape Google Flights or use an API)
-        var flights = await SimulateFlightSearchAsync(flightData);
-
+        // Return flight search result with empty flights list
+        // In production, this would integrate with a real flight search API
         return new FlightResult
         {
             Origin = flightData.Origin,
@@ -99,7 +97,7 @@ public class FlightSearchService : IFlightSearchService
             ReturnDate = flightData.ReturnDate,
             Passengers = flightData.Passengers.Total,
             CabinClass = GetCabinClassName(flightData.SeatType),
-            Flights = flights,
+            Flights = new List<Flight>(), // Empty list - to be populated by actual provider
             SearchUrl = searchUrl,
             TripType = flightData.TripType,
             SearchedAt = DateTime.UtcNow
@@ -205,75 +203,6 @@ public class FlightSearchService : IFlightSearchService
         
         // Fallback format - may not always work but provides basic functionality
         return $"/m/{code.ToLower()}";
-    }
-
-    private string BuildRoundTripTfsParameter(string departureDate, string returnDate, string origin, string dest)
-    {
-        // This is a simplified TFS encoding
-        // Real implementation would need proper Google Flights URL encoding
-        // For now, we return a basic format that Google Flights can understand
-        // In production, this would use proper base64 encoding of protobuf data
-        
-        // Note: The actual TFS parameter is complex and requires protobuf encoding
-        // This is a placeholder that demonstrates the structure
-        var tfs = $"CBwQARIK{departureDate.Replace("-", "")}agwIAxII{origin}cg0IAxIJ{dest}";
-        return tfs;
-    }
-
-    private string BuildOneWayTfsParameter(string departureDate, string origin, string dest)
-    {
-        // Simplified one-way TFS encoding
-        // In production, this would use proper protobuf encoding
-        var tfs = $"CBwQARIK{departureDate.Replace("-", "")}agwIAxII{origin}cg0IAxIJ{dest}";
-        return tfs;
-    }
-
-    private async Task<List<Flight>> SimulateFlightSearchAsync(FlightData flightData)
-    {
-        await Task.Delay(100); // Simulate API call
-
-        var random = new Random();
-        var airlines = new[]
-        {
-            "United Airlines", "Delta", "American Airlines", "Southwest",
-            "JetBlue", "Air France", "British Airways", "Lufthansa",
-            "Emirates", "Qatar Airways", "Turkish Airlines", "Uzbekistan Airways"
-        };
-
-        var flights = new List<Flight>();
-        var flightCount = random.Next(3, 8);
-
-        for (int i = 0; i < flightCount; i++)
-        {
-            var airline = airlines[random.Next(airlines.Length)];
-            var departureHour = random.Next(5, 23);
-            var durationHours = random.Next(2, 15);
-            var durationMinutes = random.Next(0, 60);
-            var arrivalHour = (departureHour + durationHours) % 24;
-            var stops = random.Next(0, 3);
-            
-            // Base price varies by distance and cabin class
-            var basePrice = 200 + random.Next(100, 2000);
-            var cabinMultiplier = GetCabinPriceMultiplier(flightData.SeatType);
-            var price = basePrice * cabinMultiplier + (stops * 50);
-
-            flights.Add(new Flight
-            {
-                Airline = airline,
-                FlightNumber = $"{GetAirlineCode(airline)}{random.Next(100, 9999)}",
-                DepartureTime = $"{departureHour:D2}:{random.Next(0, 60):D2}",
-                ArrivalTime = $"{arrivalHour:D2}:{random.Next(0, 60):D2}",
-                Duration = $"{durationHours}h {durationMinutes}m",
-                Stops = stops,
-                Price = PriceHelper.RoundPrice(price, "USD"),
-                Currency = "USD",
-                Origin = flightData.Origin,
-                Destination = flightData.Destination,
-                DepartureDate = flightData.DepartureDate
-            });
-        }
-
-        return flights.OrderBy(f => f.Price).ToList();
     }
 
     private decimal GetCabinPriceMultiplier(SeatType seatType)

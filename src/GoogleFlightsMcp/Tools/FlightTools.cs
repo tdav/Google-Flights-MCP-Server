@@ -1,9 +1,9 @@
-using System.Text.Json;
-using GoogleFlightsMcp.Models;
-using GoogleFlightsMcp.Services;
+using GoogleFlights.Core.Helpers;
+using GoogleFlights.Core.Models;
+using GoogleFlights.Core.Services;
 using GoogleFlightsMcp.Mcp;
-using GoogleFlightsMcp.Helpers;
 using Serilog;
+using System.Text.Json;
 
 namespace GoogleFlightsMcp.Tools;
 

@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace GoogleFlightsMcp.Helpers;
+namespace GoogleFlights.Core.Helpers;
 
 /// <summary>
 /// Helper class for date-related operations

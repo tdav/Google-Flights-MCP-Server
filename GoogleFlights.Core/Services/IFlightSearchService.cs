@@ -1,6 +1,6 @@
-using GoogleFlightsMcp.Models;
+using GoogleFlights.Core.Models;
 
-namespace GoogleFlightsMcp.Services;
+namespace GoogleFlights.Core.Services;
 
 /// <summary>
 /// Interface for flight search service
