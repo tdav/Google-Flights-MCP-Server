@@ -1,44 +1,42 @@
+using GoogleFlights.Core.Models;
+using GoogleFlights.Core.Services;
 using GoogleFlightsApi.Models;
-using System.Web;
 
 namespace GoogleFlightsApi.Services;
 
+/// <summary>
+/// Adapter service that bridges between API models and Core service
+/// </summary>
 public class FlightSearchService : IFlightSearchService
 {
     private readonly ILogger<FlightSearchService> _logger;
-    private readonly HttpClient _httpClient;
+    private readonly GoogleFlights.Core.Services.IFlightSearchService _coreFlightSearchService;
 
     public FlightSearchService(
-        ILogger<FlightSearchService> logger,
-        HttpClient httpClient)
+        ILogger<FlightSearchService> logger)
     {
         _logger = logger;
-        _httpClient = httpClient;
+        _coreFlightSearchService = new GoogleFlights.Core.Services.FlightSearchService();
     }
 
     public async Task<FlightSearchResponse> SearchFlightsAsync(FlightSearchRequest request)
     {
         ValidateRequest(request);
 
-        var searchUrl = BuildGoogleFlightsUrl(request);
-        _logger.LogInformation(
-            "Searching flights: {Origin} -> {Destination} on {DepartureDate}",
-            request.Origin, request.Destination, request.DepartureDate);
+        // Convert API request to Core FlightData
+        var flightData = ConvertToFlightData(request);
+
+        // Call Core service
+        var flightResult = await _coreFlightSearchService.SearchFlightsAsync(flightData);
 
         // Simulate flight search - in production, integrate with real flight API
-        var flights = await SimulateFlightSearch(request);
+        var simulatedFlights = await SimulateFlightSearch(request);
+        
+        // Convert Core FlightResult to API response and add simulated flights
+        var response = ConvertToFlightSearchResponse(flightResult);
+        response.Flights = simulatedFlights;
 
-        return new FlightSearchResponse
-        {
-            Origin = request.Origin,
-            Destination = request.Destination,
-            DepartureDate = request.DepartureDate,
-            ReturnDate = request.ReturnDate,
-            Passengers = request.Passengers,
-            CabinClass = request.CabinClass,
-            Flights = flights,
-            SearchUrl = searchUrl
-        };
+        return response;
     }
 
     private void ValidateRequest(FlightSearchRequest request)
@@ -71,53 +69,64 @@ public class FlightSearchService : IFlightSearchService
                 nameof(request.CabinClass));
     }
 
-    private string BuildGoogleFlightsUrl(FlightSearchRequest request)
+    private FlightData ConvertToFlightData(FlightSearchRequest request)
     {
-        // Get Google codes for airports
-        var originCode = AirportCodes.GetGoogleCode(request.Origin) ?? $"/m/{request.Origin.ToLower()}";
-        var destCode = AirportCodes.GetGoogleCode(request.Destination) ?? $"/m/{request.Destination.ToLower()}";
+        var seatType = ParseSeatType(request.CabinClass);
+        var tripType = !string.IsNullOrWhiteSpace(request.ReturnDate) 
+            ? TripType.RoundTrip 
+            : TripType.OneWay;
 
-        // Format: https://www.google.ca/travel/flights/search?tfs=...
-        var baseUrl = "https://www.google.ca/travel/flights";
-        
-        // Build TFS parameter
-        var tfs = BuildTfsParameter(
-            request.DepartureDate,
-            request.ReturnDate,
-            originCode,
-            destCode);
-
-        var cabinClassCode = GetCabinClassCode(request.CabinClass);
-        var url = $"{baseUrl}/search?tfs={tfs}&hl=en&curr=USD";
-        
-        if (request.Passengers > 1)
-            url += $"&adults={request.Passengers}";
-            
-        if (cabinClassCode > 0)
-            url += $"&c={cabinClassCode}";
-
-        return url;
+        return new FlightData
+        {
+            Origin = request.Origin,
+            Destination = request.Destination,
+            DepartureDate = request.DepartureDate,
+            ReturnDate = request.ReturnDate,
+            Passengers = new Passengers { Adults = request.Passengers },
+            SeatType = seatType,
+            TripType = tripType
+        };
     }
 
-    private string BuildTfsParameter(string departureDate, string? returnDate, string origin, string dest)
+    private FlightSearchResponse ConvertToFlightSearchResponse(FlightResult flightResult)
     {
-        // Simplified TFS encoding - in production, use proper Google Flights URL encoding
-        var depDate = DateTime.Parse(departureDate);
-        var tfs = $"CBwQAhopEgoyMDI2LTAxLTA5agwIAxIIL20vMGZzbXlyDQgDEgkvbS8wMl8yODY";
-        
-        // This is a simplified version - real implementation would need proper encoding
-        return tfs;
+        return new FlightSearchResponse
+        {
+            Origin = flightResult.Origin,
+            Destination = flightResult.Destination,
+            DepartureDate = flightResult.DepartureDate,
+            ReturnDate = flightResult.ReturnDate,
+            Passengers = flightResult.Passengers,
+            CabinClass = flightResult.CabinClass,
+            SearchUrl = flightResult.SearchUrl,
+            Flights = flightResult.Flights.Select(ConvertToFlightDto).ToList()
+        };
     }
 
-    private int GetCabinClassCode(string cabinClass)
+    private FlightDto ConvertToFlightDto(Flight flight)
+    {
+        return new FlightDto
+        {
+            Airline = flight.Airline,
+            FlightNumber = flight.FlightNumber,
+            DepartureTime = flight.DepartureTime,
+            ArrivalTime = flight.ArrivalTime,
+            Duration = flight.Duration,
+            Stops = flight.Stops,
+            Price = flight.Price,
+            Currency = flight.Currency
+        };
+    }
+
+    private SeatType ParseSeatType(string cabinClass)
     {
         return cabinClass.ToLower() switch
         {
-            "economy" => 0,
-            "premium_economy" => 1,
-            "business" => 2,
-            "first" => 3,
-            _ => 0
+            "economy" => SeatType.Economy,
+            "premium_economy" => SeatType.PremiumEconomy,
+            "business" => SeatType.Business,
+            "first" => SeatType.First,
+            _ => SeatType.Economy
         };
     }
 
