@@ -229,26 +229,7 @@ public class FlightSearchService : IFlightSearchService
         };
     }
 
-    private string GetAirlineCode(string airline)
-    {
-        return airline switch
-        {
-            "United Airlines" => "UA",
-            "Delta" => "DL",
-            "American Airlines" => "AA",
-            "Southwest" => "WN",
-            "JetBlue" => "B6",
-            "Air France" => "AF",
-            "British Airways" => "BA",
-            "Lufthansa" => "LH",
-            "Emirates" => "EK",
-            "Qatar Airways" => "QR",
-            "Turkish Airlines" => "TK",
-            "Uzbekistan Airways" => "HY",
-            _ => "XX"
-        };
-    }
-
+   
     private string BuildRoundTripTfsParameter(
         string departureDate,
         string returnDate,
